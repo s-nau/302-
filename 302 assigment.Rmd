@@ -1,0 +1,1399 @@
+---
+title: "302 assigment 1"
+author: "shimmy"
+date: "5/16/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd("C:/Users/shimm/OneDrive - University of Toronto/second_year/summer first semester/sta302/assigment 1")
+library(MASS)
+library(tidyverse)
+library(matlib)
+```
+
+#part1
+##a
+```{r}
+## Simulation ##
+set.seed(1005476995)
+# makes reproducable
+beta0 <- rnorm(1, mean = 0, sd = 1) ## The population beta0
+beta1 <- runif(n = 1, min = 1, max = 3) ## The population beta1
+sig2 <- rchisq(n = 1, df = 25) ## The error variance sigma^2
+```
+
+```{r}
+## Multiple simulation may require loops ##
+nsample <- 5 ## Sample size
+n.sim = 100 ## The number of simulations
+sigX <- 0.2 ## The variances of X
+
+```
+
+```{r}
+## Simulate the predictor variable ##
+
+X <- rnorm(nsample, mean = 0, sd = sqrt(sigX))
+# x is supposed to be fixed
+
+```
+
+##b
+```{r}
+df_1 <- matrix(NA, ncol = nsample + 3, nrow = 0) %>% as.data.frame()
+x_bar <- mean(X)
+f_1 <- function(x){
+  return (sum(x^2)/ (nsample -2))
+}
+insertRow <- function(existingDF, r, newrow) {
+  existingDF[seq(r+1,nrow(existingDF)+1),] <- existingDF[seq(r,nrow(existingDF)),]
+  existingDF[r,] <- newrow
+  existingDF
+}
+for (i in 1:n.sim){
+  error <- rnorm(nsample, sd = sqrt(sig2))
+  Y <- (beta0 + beta1*X + error) 
+  y_bar <- mean(Y)
+  fake_beta_1 <-(sum(X*Y) - nsample*x_bar*y_bar)/(sum(X^2) - nsample*(x_bar^2))
+  fake_beta_0 <- y_bar - fake_beta_1 *x_bar
+  my.vec <- c(Y, fake_beta_0, fake_beta_1, f_1(error))
+  df_1 <- df_1 %>% insertRow( i, my.vec) %>% as.data.frame()
+}
+df_1 <-df_1 %>% rename(b_0 = V6, b_1 = V7, S2 = V8)
+df_1 <- df_1[1:(dim(df_1)[1] - 1),]
+head(df_1)
+```
+
+
+```{r}
+ m_b_0 <-mean(df_1$b_0)
+m_b_0 - beta0
+
+```
+
+
+```{r}
+m_b_1 <-mean(df_1$b_1)
+m_b_1 - beta0
+
+```
+I notice from here that the estimations b_0 and b_1 which are the estimations for $$\beta_0, \beta_1$$ are close in value to the true values of the paramaters.
+
+##c
+```{r}
+df_1 %>% ggplot(aes(b_1)) + geom_histogram()
+
+```
+```{r}
+df_1 %>% ggplot(aes(b_0)) + geom_histogram()
+```
+
+both of these are normallly distirubted, the first is approximately distributed as $$N(\beta_1, \dfrac{\sigma^2}{SXX})$$ while the second is approximetly distirubeted as $$N(\beta_0, \sigma^2(\frac{1}{n} + \frac{\bar{x}^2}{SXX})$$
+##d
+```{r}
+## sample variance of b_1
+var(df_1$b_1)
+```
+```{r}
+# variance of \hat{\beta_1}\ X = x_i
+SXX <- sum((X - x_bar)^2)
+var_beta_1 <-sig2/SXX
+var_beta_1
+
+```
+
+```{r}
+#sample variance of b_0
+var(df_1$b_0)
+
+
+```
+```{r}
+#variance of \hat{\beta_0}|X = x_i
+var_beta_0<-sig2*(1/nsample + x_bar^2/SXX)
+var_beta_0
+```
+these are approximately equal as the sample variance is an unbiased estimator for the varaince, and therefore, will converge in probability to the same value for a large sample. 
+##e
+
+```{r}
+df_1$lower_CI_real_var_beta_0 <- df_1$b_0 - qnorm(.975)*sqrt(sig2)*sqrt(1/nsample + x_bar^2/SXX)
+
+```
+```{r}
+df_1$upper_CI_real_var_beta_0 <- df_1$b_0 + qnorm(.975)*sqrt(sig2)*sqrt(1/nsample + x_bar^2/SXX)
+```
+
+```{r}
+df_1$lower_CI_sample_var_beta_0 <-  df_1$b_0 - qt(.975, df= nsample - 2)*sqrt(df_1$S2)*sqrt(1/nsample + x_bar^2/SXX)
+
+```
+```{r}
+df_1$upper_CI_sample_var_beta_0 <-  df_1$b_0 + qt(.975, df= nsample - 2)*sqrt(df_1$S2)*sqrt(1/nsample + x_bar^2/SXX)
+```
+```{r}
+df_1$lower_CI_real_var_beta_1 <- df_1$b_1 - qnorm(.975)*sqrt(sig2/SXX)
+```
+```{r}
+df_1$upper_CI_real_var_beta_1 <- df_1$b_1 + qnorm(.975)*sqrt(sig2/SXX)
+```
+```{r}
+df_1$lower_CI_sample_var_beta_1 <- df_1$b_1 - qt(.975, df= nsample -  2)*sqrt(df_1$S2/SXX)
+```
+```{r}
+df_1$upper_CI_sample_var_beta_1 <- df_1$b_1 + qt(.975, df= nsample -  2)*sqrt(df_1$S2/SXX)
+```
+
+
+
+
+calculate the 95% t and z CI fro BO and B_1
+how many have the tru value
+
+```{r}
+df_1 <- df_1 %>% mutate(contains_true_b_0_real = if_else(lower_CI_real_var_beta_0 <= beta0 & beta0 <= upper_CI_real_var_beta_0, 1, 0))
+```
+```{r}
+df_1 <-  df_1 %>% mutate(contains_true_b_0_sample = if_else(lower_CI_sample_var_beta_0<= beta0 & beta0 <= upper_CI_sample_var_beta_0, 1, 0))
+```
+```{r}
+df_1 <- df_1 %>% mutate(contains_true_b_1_real = if_else(lower_CI_real_var_beta_1<= beta1 & beta1 <= upper_CI_real_var_beta_1, 1, 0))
+```
+```{r}
+df_1 <- df_1 %>% mutate(contains_true_b_1_sample = if_else(lower_CI_sample_var_beta_1<= beta1 & beta1 <= upper_CI_sample_var_beta_1, 1, 0))
+```
+
+```{r}
+sum(df_1$contains_true_b_0_real)/nrow(df_1)
+```
+```{r}
+sum(df_1$contains_true_b_0_sample)/nrow(df_1)
+```
+```{r}
+sum(df_1$contains_true_b_1_real)/nrow(df_1)
+```
+```{r}
+sum(df_1$contains_true_b_1_sample)/nrow(df_1)
+```
+the differences seem consitent with the confidence interval because in both cases about 95% of the sample contain the true value of beta0 and beta1. 
+
+the main difference i notice between these the t and z intervals, is that the t intervals often are larger and is more likely to contain the true value. I would suspect that if you increase the number of observations, we will more likely get tje true vlaue of the 95% confidence interval per the central limit theorem ( check)
+
+
+
+##f
+
+```{r}
+nsample <- 10
+df_2 <- matrix(NA, ncol = nsample + 3, nrow = 0) %>% as.data.frame()
+X <- rnorm(nsample, mean = 0, sd = sqrt(sigX))
+x_bar <- mean(X)
+for (i in 1:n.sim){
+  error <- rnorm(nsample, sd = sqrt(sig2))
+  Y <- (beta0 + beta1*X + error) 
+  y_bar <- mean(Y)
+  beta_1 <-(sum(X*Y) - nsample*x_bar*y_bar)/(sum(X^2) - nsample*(x_bar^2))
+  beta_0 <- y_bar - beta_1 *x_bar
+  my.vec <- c(Y, beta_0, beta_1, f_1(error))
+  df_2 <- df_2 %>% insertRow(  i, my.vec) %>% as.data.frame()
+}
+df_2 <-df_2 %>% rename(b_0 = V11, b_1 = V12, S2 = V13)
+df_2 <- df_2[1:(dim(df_2)[1] - 1),]
+head(df_2)
+```
+
+
+```{r}
+f <- function(df){
+  print(mean(df$b_0))
+  print(mean(df$b_1))
+  SXX <- sum((X - x_bar)^2) 
+  x_b_1 <- seq(-10, 10, length.out=100)
+df_b_1 <- with(df, data.frame(x = x_b_1, y = dnorm(x_b_1, beta1, sd(sqrt(sig2/SXX)))))
+  print(df %>% 
+          select (b_1) %>% 
+          ggplot() +
+          geom_histogram(aes(x = b_1, y= ..density..)))
+  
+x_b_0<-seq(-5, 5, length.out=100)
+df_b_0 <- with(df, data.frame(x = x_b_0, y = dnorm(x_b_0, beta0, sd(sqrt(sig2*(1/nsample + x_bar^2/SXX))))))
+print(df %>% 
+          select (b_0) %>% 
+          ggplot() +
+          geom_histogram(aes(x = b_0, y= ..density..)))
+ 
+  print(var(df$b_1))## sample variance of b_1
+  print(sig2/SXX)# variance of \hat{\beta_1}\ X = x_i
+  print(var(df$b_0)) #sample variance of b_0
+  print(sig2*(1/nsample + x_bar^2/SXX))  #variance of \hat{\beta_0}|X = x_i
+  df$lower_CI_real_var_beta_0 <- df$b_0 - qnorm(.975)*sqrt(sig2)*sqrt(1/nsample + x_bar^2/SXX)
+  df$upper_CI_real_var_beta_0 <- df$b_0 + qnorm(.975)*sqrt(sig2)*sqrt(1/nsample + x_bar^2/SXX)
+  df$lower_CI_sample_var_beta_0 <-  df$b_0 - qt(.975, df= nsample - 2)*sqrt(df$S2)*sqrt(1/nsample + x_bar^2/SXX)
+
+# df$upper_CI_sample_var_beta_0 <-  df$b_0 + qt(.975, df= nsample - 2)*sqrt(df$S2)*sqrt(1/nsample + x_bar^2/SXX)
+# 
+# df$lower_CI_real_var_beta_1 <- df$b_1 - qnorm(.975)*sqrt(sig2/SXX)
+# 
+# df$upper_CI_real_var_beta_1 <- df$b_1 + qnorm(.975)*sqrt(sig2/SXX)
+# 
+# df$lower_CI_sample_var_beta_1 <- df$b_1 - qt(.975, df= nsample -  2)*sqrt(df$S2/SXX)
+# 
+# df$upper_CI_sample_var_beta_1 <- df$b_1 + qt(.975, df= nsample -  2)*sqrt(df$S2/SXX)
+# 
+# df <- df %>% mutate(contains_true_b_0_real = if_else(lower_CI_real_var_beta_0 <= beta0 & beta0 <= upper_CI_real_var_beta_0, 1, 0))
+# 
+# df <-  df%>% mutate(contains_true_b_0_sample = if_else(lower_CI_sample_var_beta_0<= beta0 & beta0 <= upper_CI_sample_var_beta_0, 1, 0))
+# 
+# df<- df %>% mutate(contains_true_b_1_real = if_else(lower_CI_real_var_beta_1<= beta1 & beta1 <= upper_CI_real_var_beta_1, 1, 0))
+# 
+# df <- df %>% mutate(contains_true_b_1_sample = if_else(lower_CI_sample_var_beta_1<= beta1 & beta1 <= upper_CI_sample_var_beta_1, 1, 0))
+# 
+# print(sum(df$contains_true_b_0_real)/nrow(df))
+# 
+# print(sum(df$contains_true_b_0_sample)/nrow(df))
+# 
+# print(sum(df$contains_true_b_1_real)/nrow(df))
+# 
+# print(sum(df$contains_true_b_1_sample)/nrow(df))
+
+return(df)
+}
+```
+```{r}
+df_2 <-f(df_2)
+```
+```{r}
+nsample <- 25
+df_3 <- matrix(NA, ncol = nsample + 3, nrow = 0) %>% as.data.frame()
+X <- rnorm(nsample, mean = 0, sd = sqrt(sigX))
+x_bar <- mean(X)
+for (i in 1:n.sim){
+  error <- rnorm(nsample, sd = sqrt(sig2))
+  Y <- (beta0 + beta1*X + error) 
+  y_bar <- mean(Y)
+  beta_1 <-(sum(X*Y) - nsample*x_bar*y_bar)/(sum(X^2) - nsample*(x_bar^2))
+  beta_0 <- y_bar - beta_1 *x_bar
+  my.vec <- c(Y, beta_0, beta_1, f_1(error))
+  df_3 <- df_3 %>%  insertRow(  i, my.vec) %>% as.data.frame()
+}
+df_3 <-df_3 %>% rename(b_0 = V26, b_1 = V27, S2 = V28)
+head(df_3)
+```
+```{r}
+df_3 <- f(df_3)
+```
+
+```{r}
+nsample <- 50
+df_4 <- matrix(NA, ncol = nsample + 3, nrow = 0) %>% as.data.frame()
+X <- rnorm(nsample, mean = 0, sd = sqrt(sigX))
+x_bar <- mean(X)
+for (i in 1:n.sim){
+  error <- rnorm(nsample, sd = sqrt(sig2))
+  Y <- (beta0 + beta1*X + error) 
+  y_bar <- mean(Y)
+  beta_1 <-(sum(X*Y) - nsample*x_bar*y_bar)/(sum(X^2) - nsample*(x_bar^2))
+  beta_0 <- y_bar - beta_1 *x_bar
+  my.vec <- c(Y, beta_0, beta_1, f_1(error))
+  df_4 <- df_4 %>% insertRow(i, my.vec) %>% as.data.frame()
+}
+df_4 <-df_4 %>% rename(b_0 = V51, b_1 = V52, S2 = V53)
+head(df_4)
+
+```
+```{r}
+df_4 <- f(df_4)
+```
+```{r}
+nsample <- 100
+df_5 <- matrix(NA, ncol = nsample + 3, nrow = 0) %>% as.data.frame()
+X <- rnorm(nsample, mean = 0, sd = sqrt(sigX))
+x_bar <- mean(X)
+for (i in 1:n.sim){
+  error <- rnorm(nsample, sd = sqrt(sig2))
+  Y <- (beta0 + beta1*X + error) 
+  y_bar <- mean(Y)
+  beta_1 <-(sum(X*Y) - nsample*x_bar*y_bar)/(sum(X^2) - nsample*(x_bar^2))
+  beta_0 <- y_bar - beta_1 *x_bar
+  my.vec <- c(Y, beta_0, beta_1, f_1(error))
+  df_5 <- df_5  %>% insertRow(i, my.vec) %>% as.data.frame()
+}
+df_5 <-df_5 %>% rename(b_0 = V101, b_1 = V102, S2 = V103)
+head(df_5)
+```
+```{r}
+df_5 <- f(df_5)
+```
+
+
+if you increase the sample siz,e what happens to the mean, var and distirubtion what happens to mean var and distirubtion ( think of CLT)
+
+I notice that the mean of the estimators converges to the true value as the the sample gets bigger
+as these are relatively small samples still only 100, it doesn't quite converge completely. 
+
+
+I notice that as the sample size get larger the difference between the theoretical variance of the estimators and the sample variance get smaller
+##g
+```{r}
+nsample <- 100
+var_1 <- 10 # = 2*df = 5
+var_2 <- 20 # = 2*df = 10
+var_3 <- 80 # = 2*df = 40
+var_4 <- 200 # = 2 *df = 100
+f_2 <- function(freedoms){
+  sig2 <- rchisq(n = 1, df = freedoms/2)
+  df <- matrix(NA, ncol = nsample + 3, nrow =0 ) %>% as.data.frame()
+  X <- rnorm(nsample, mean = 0, sd = sqrt(sigX))
+  x_bar <- mean(X)
+  for (i in 1:n.sim){
+    error <- rnorm(nsample, sd = sqrt(sig2))
+    Y <- (beta0 + beta1*X + error) 
+    y_bar <- mean(Y)
+    beta_1 <-(sum(X*Y) - nsample*x_bar*y_bar)/(sum(X^2) - nsample*(x_bar^2))
+    beta_0 <- y_bar - beta_1 *x_bar
+    my.vec <- c(Y, beta_0, beta_1, f_1(error))
+    df <- df  %>% insertRow(i, my.vec) %>% as.data.frame()
+  }
+  df<-df %>% rename(b_0 = V101, b_1 = V102, S2 = V103) %>% head(-1)
+  print(head(df))
+  df <- f(df)
+  # print(df %>% ggplot(aes(x = b_0)) + geom_bar() + title("b_0 distribution"))
+  # print(df %>% ggplot(aes(x = b_1)) + geom_bar() + title("b_1 distribution"))
+  # print(mean(b_0))
+  # print(var(b_0))
+  # print(mean(b_1))
+  # print(var(b_1))
+  return (df)
+}
+```
+
+
+```{r}
+df_6 <- f_2(var_1)
+
+
+```
+
+
+```{r}
+df_7 <- f_2(var_2)
+```
+
+
+```{r}
+df_8 <- f_2(var_3)
+```
+
+
+```{r}
+df_9 <- f_2(var_4)
+
+```
+
+
+mean: b_0[1] 0.5539691 [1] 0.6120967  [1] 0.5572957 [1] 0.4101264 real is .55, therefore as variance ges it seems to generally go father from the real mean
+mean: b_1[1] 2.383384 [1] 2.419677 [1] 2.327849 [1] 2.340052 real is 2.374, therefore I would argue that as varaince of the errror increase the smaple mean goes father from the true mean
+sample var b_1[1] 0.1590908 [1] 1.158918 [1] 3.923658 [1] 7.715128
+ again it seems to get father away from the actual variance
+var of b_1[1] 0.008732853 [1] 0.008732853 [1] 0.008732853 [1] 0.008732853
+sample of of b_0 [1] 0.04538609 [1] 0.1487888 [1] 0.5678451 [1] 1.35172
+again seems to go father awat from the actual varaince
+var of b_0 [1] 0.01409671 [1] 0.01409671 [1] 0.01409671 [1] 0.01409671
+
+by inspection one should be able to recongize that the distribution of both the 
+coefficients are less normal when the error is larger.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#part2
+
+```{r}
+## Simulation for correlated predictors ##
+set.seed(1005476995)
+std.error <- function(input) {
+  sd(x)/sqrt(length(input))
+}
+```
+
+```{r}
+nsample <- 10; nsim <- 100
+sig2 <- rchisq(1, df = 1) ## The true error variance
+bet <- c(rnorm(3, 0, 1), 0) ## 4 values of beta that is beta0, beta1, beta2, beta3 = 0
+muvec <- rnorm(3, 0, 1)
+sigmat <- diag(rchisq(3, df = 4)) # diagnlosed from chiasquares
+X <- mvrnorm(nsample, mu = muvec, Sigma = sigmat)
+Xmat <- cbind(1, X)
+```
+
+##a
+```{r}
+
+betsY_1 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_2 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_3 <- matrix(NA, ncol = 2, nrow = nsim)
+
+for(i in 1:nsim){ # modeling Y on X
+Y_1 <- Xmat[,1]*bet[1] + Xmat[,2]*bet[2] + rnorm(nsample, 0, sqrt(sig2))
+Y_2 <- Xmat[,1]*bet[1] + Xmat[,3]*bet[3] + rnorm(nsample, 0, sqrt(sig2))
+Y_3 <- Xmat[,1]*bet[1] + Xmat[,4]*bet[4] + rnorm(nsample, 0, sqrt(sig2))
+
+modelY_1 <- lm(Y_1 ~ X[,1])
+modelY_2 <- lm(Y_2 ~ X[,2])
+modelY_3 <- lm(Y_3 ~ X[,3])
+
+betsY_1[i,] <- coef(modelY_1)
+betsY_2[i,] <- coef(modelY_2)
+betsY_3[i,] <- coef(modelY_3)
+
+
+}
+# mean(betsY_1[,2]) - bet[2]
+# mean(betsY_2[,2]) - bet[3]
+# mean(betsY_3[,2]) - bet[4]
+# 
+# mean(c(betsY_1[,1], betsY_2[,1], betsY_3[,1])) - bet[1]
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+model_1 <- lm(Y~X[,1])
+model_2 <- lm(Y~X[,2])
+model_3 <- lm(Y~X[,3])
+
+coef(model_1) - c(bet[1], bet[2])
+coef(model_2) - c(bet[1], bet[3])
+coef(model_3) - c(bet[1], bet[4])
+
+
+``` 
+one can notice that the difference between the coefficients and the real values of the modesl are not so different. 
+
+
+
+##b
+```{r}
+## Simulate the response ##
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+b_0_mean <- mean(bets[,1])
+b_1_mean <- mean(bets[,2])
+b_2_mean <- mean(bets[,3])
+b_3_mean <- mean(bets[,4])
+
+b_0_mean - bet[1]
+b_1_mean - bet[2]
+b_2_mean - bet[3]
+b_3_mean - bet[4]
+```
+howeover, notice now that the values are a lot closer in value to hte true value thna the previous one. 
+
+```{r}
+
+var_beta_given_x <- inv(t(Xmat)%*%Xmat)*sig2
+var(bets) - var_beta_given_x
+```
+using the variances formula for the beta predictions we can notice that the variance of the actual betas is relatively close to that of the predicted betas. 
+
+##c
+
+```{r}
+df_c_beta_1 <-  matrix(NA, ncol = 2, nrow =0)%>% as.data.frame() %>% head(-1)
+df_c_beta_2 <-  matrix(NA, ncol = 2, nrow =0)%>% as.data.frame() %>% head(-1)
+## The correlation ##
+r12 <- .2
+
+sigmat[1,2] <- sigmat[2,1] <- r12*sqrt(sigmat[1,1])*sqrt(sigmat[2,2])
+## Simulation for Categorical Variables with Interaction ##
+set.seed(1005476995)
+X <- mvrnorm(nsample, mu = muvec, Sigma = sigmat); cor(X[,1], X[,2])
+Xmat <- cbind(1, X)
+
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+model_1 <- lm(Y~X[,1])
+model_2 <- lm(Y~X[,2])
+model_3 <- lm(Y~X[,3])
+
+coef(model_1) - c(bet[1], bet[2])
+coef(model_2) - c(bet[1], bet[3])
+coef(model_3) - c(bet[1], bet[4])
+
+
+
+betsY_1 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_2 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_3 <- matrix(NA, ncol = 2, nrow = nsim)
+
+for(i in 1:nsim){ # modeling Y on X
+Y_1 <- Xmat[,1]*bet[1] + Xmat[,2]*bet[2] + rnorm(nsample, 0, sqrt(sig2))
+Y_2 <- Xmat[,1]*bet[1] + Xmat[,3]*bet[3] + rnorm(nsample, 0, sqrt(sig2))
+Y_3 <- Xmat[,1]*bet[1] + Xmat[,4]*bet[4] + rnorm(nsample, 0, sqrt(sig2))
+
+modelY_1 <- lm(Y_1 ~ X[,1])
+modelY_2 <- lm(Y_2 ~ X[,2])
+modelY_3 <- lm(Y_3 ~ X[,3])
+
+betsY_1[i,] <- coef(modelY_1)
+betsY_2[i,] <- coef(modelY_2)
+betsY_3[i,] <- coef(modelY_3)
+}
+# print(mean(betsY_1[,2]) - bet[2])
+# print(mean(betsY_2[,2]) - bet[3])
+# print(mean(betsY_3[,2]) - bet[4])
+# 
+# print(mean(c(betsY_1[,1], betsY_2[,1], betsY_3[,1])) - bet[1])
+
+
+  bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+b_0_mean <- mean(bets[,1])
+b_1_mean <- mean(bets[,2])
+b_2_mean <- mean(bets[,3])
+b_3_mean <- mean(bets[,4])
+vec_b_1 <- c(r12, sqrt(var(bets[,2])/ nrow(bets)))
+df_c_beta_1 <- df_c_beta_1 %>% insertRow(1, vec_b_1) %>% head(-1)
+vec_b_2 <- c(r12, sqrt(var(bets[,3])/ nrow(bets)))
+df_c_beta_2 <- df_c_beta_1 %>% insertRow(1, vec_b_2) %>% head(-1)
+print(b_0_mean - bet[1])
+print(b_1_mean - bet[2])
+print(b_2_mean - bet[3])
+print(b_3_mean - bet[4])
+var_beta_given_x <- inv(t(Xmat)%*%Xmat)*sig2
+print(var(bets) - var_beta_given_x)
+
+```
+```{r}
+r12 <- .5
+```
+
+
+
+```{r}
+sigmat[1,2] <- sigmat[2,1] <- r12*sqrt(sigmat[1,1])*sqrt(sigmat[2,2])
+## Simulation for Categorical Variables with Interaction ##
+set.seed(1005476995)
+X <- mvrnorm(nsample, mu = muvec, Sigma = sigmat); cor(X[,1], X[,2])
+Xmat <- cbind(1, X)
+
+```
+
+
+```{r}
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+model_1 <- lm(Y~X[,1])
+model_2 <- lm(Y~X[,2])
+model_3 <- lm(Y~X[,3])
+
+coef(model_1) - c(bet[1], bet[2])
+coef(model_2) - c(bet[1], bet[3])
+coef(model_3) - c(bet[1], bet[4])
+
+betsY_1 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_2 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_3 <- matrix(NA, ncol = 2, nrow = nsim)
+
+for(i in 1:nsim){ # modeling Y on X
+Y_1 <- Xmat[,1]*bet[1] + Xmat[,2]*bet[2] + rnorm(nsample, 0, sqrt(sig2))
+Y_2 <- Xmat[,1]*bet[1] + Xmat[,3]*bet[3] + rnorm(nsample, 0, sqrt(sig2))
+Y_3 <- Xmat[,1]*bet[1] + Xmat[,4]*bet[4] + rnorm(nsample, 0, sqrt(sig2))
+
+modelY_1 <- lm(Y_1 ~ X[,1])
+modelY_2 <- lm(Y_2 ~ X[,2])
+modelY_3 <- lm(Y_3 ~ X[,3])
+
+betsY_1[i,] <- coef(modelY_1)
+betsY_2[i,] <- coef(modelY_2)
+betsY_3[i,] <- coef(modelY_3)
+}
+# print(mean(betsY_1[,2]) - bet[2])
+# print(mean(betsY_2[,2]) - bet[3])
+# print(mean(betsY_3[,2]) - bet[4])
+# 
+# print(mean(c(betsY_1[,1], betsY_2[,1], betsY_3[,1])) - bet[1])
+
+```
+
+
+```{r}
+
+  bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+b_0_mean <- mean(bets[,1])
+b_1_mean <- mean(bets[,2])
+b_2_mean <- mean(bets[,3])
+b_3_mean <- mean(bets[,4])
+vec_b_1 <- c(r12, sqrt(var(bets[,2])/ nrow(bets)))
+vec_b_1 <- c(r12, sqrt(var(bets[,3])/ nrow(bets)))
+df_c_beta_1 <- df_c_beta_1 %>% insertRow(1, vec_b_1)
+df_c_beta_2 <- df_c_beta_1 %>% insertRow(1, vec_b_2)
+print(b_0_mean - bet[1])
+print(b_1_mean - bet[2])
+print(b_2_mean - bet[3])
+print(b_3_mean - bet[4])
+var_beta_given_x <- inv(t(Xmat)%*%Xmat)*sig2
+print(var(bets) - var_beta_given_x)
+
+```
+```{r}
+r12 <- .7
+```
+
+```{r}
+sigmat[1,2] <- sigmat[2,1] <- r12*sqrt(sigmat[1,1])*sqrt(sigmat[2,2])
+## Simulation for Categorical Variables with Interaction ##
+set.seed(1005476995)
+X <- mvrnorm(nsample, mu = muvec, Sigma = sigmat); cor(X[,1], X[,2])
+Xmat <- cbind(1, X)
+
+```
+
+
+```{r}
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+model_1 <- lm(Y~X[,1])
+model_2 <- lm(Y~X[,2])
+model_3 <- lm(Y~X[,3])
+
+coef(model_1) - c(bet[1], bet[2])
+coef(model_2) - c(bet[1], bet[3])
+coef(model_3) - c(bet[1], bet[4])
+
+betsY_1 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_2 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_3 <- matrix(NA, ncol = 2, nrow = nsim)
+
+for(i in 1:nsim){ # modeling Y on X
+Y_1 <- Xmat[,1]*bet[1] + Xmat[,2]*bet[2] + rnorm(nsample, 0, sqrt(sig2))
+Y_2 <- Xmat[,1]*bet[1] + Xmat[,3]*bet[3] + rnorm(nsample, 0, sqrt(sig2))
+Y_3 <- Xmat[,1]*bet[1] + Xmat[,4]*bet[4] + rnorm(nsample, 0, sqrt(sig2))
+
+modelY_1 <- lm(Y_1 ~ X[,1])
+modelY_2 <- lm(Y_2 ~ X[,2])
+modelY_3 <- lm(Y_3 ~ X[,3])
+
+betsY_1[i,] <- coef(modelY_1)
+betsY_2[i,] <- coef(modelY_2)
+betsY_3[i,] <- coef(modelY_3)
+}
+# print(mean(betsY_1[,2]) - bet[2])
+# print(mean(betsY_2[,2]) - bet[3])
+# print(mean(betsY_3[,2]) - bet[4])
+# 
+# print(mean(c(betsY_1[,1], betsY_2[,1], betsY_3[,1])) - bet[1])
+
+```
+
+
+```{r}
+
+  bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+b_0_mean <- mean(bets[,1])
+b_1_mean <- mean(bets[,2])
+b_2_mean <- mean(bets[,3])
+b_3_mean <- mean(bets[,4])
+vec_b_1 <- c(r12, sqrt(var(bets[,2])/ nrow(bets)))
+vec_b_1 <- c(r12, sqrt(var(bets[,3])/ nrow(bets)))
+df_c_beta_1 <- df_c_beta_1 %>% insertRow(1, vec_b_1)
+df_c_beta_2 <- df_c_beta_1 %>% insertRow(1, vec_b_2)
+print(b_0_mean - bet[1])
+print(b_1_mean - bet[2])
+print(b_2_mean - bet[3])
+print(b_3_mean - bet[4])
+var_beta_given_x <- inv(t(Xmat)%*%Xmat)*sig2
+print(var(bets) - var_beta_given_x)
+
+```
+```{r}
+r12 <- .8
+```
+
+```{r}
+sigmat[1,3] <- sigmat[3,1] <- 0
+sigmat[1,2] <- sigmat[2,1] <- r12*sqrt(sigmat[1,1])*sqrt(sigmat[2,2])
+## Simulation for Categorical Variables with Interaction ##
+set.seed(1005476995)
+X <- mvrnorm(nsample, mu = muvec, Sigma = sigmat); cor(X[,1], X[,2])
+Xmat <- cbind(1, X)
+
+```
+
+
+```{r}
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+model_1 <- lm(Y~X[,1])
+model_2 <- lm(Y~X[,2])
+model_3 <- lm(Y~X[,3])
+
+coef(model_1) - c(bet[1], bet[2])
+coef(model_2) - c(bet[1], bet[3])
+coef(model_3) - c(bet[1], bet[4])
+
+
+
+betsY_1 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_2 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_3 <- matrix(NA, ncol = 2, nrow = nsim)
+
+for(i in 1:nsim){ # modeling Y on X
+Y_1 <- Xmat[,1]*bet[1] + Xmat[,2]*bet[2] + rnorm(nsample, 0, sqrt(sig2))
+Y_2 <- Xmat[,1]*bet[1] + Xmat[,3]*bet[3] + rnorm(nsample, 0, sqrt(sig2))
+Y_3 <- Xmat[,1]*bet[1] + Xmat[,4]*bet[4] + rnorm(nsample, 0, sqrt(sig2))
+
+modelY_1 <- lm(Y_1 ~ X[,1])
+modelY_2 <- lm(Y_2 ~ X[,2])
+modelY_3 <- lm(Y_3 ~ X[,3])
+
+betsY_1[i,] <- coef(modelY_1)
+betsY_2[i,] <- coef(modelY_2)
+betsY_3[i,] <- coef(modelY_3)
+}
+# print(mean(betsY_1[,2]) - bet[2])
+# print(mean(betsY_2[,2]) - bet[3])
+# print(mean(betsY_3[,2]) - bet[4])
+# 
+# print(mean(c(betsY_1[,1], betsY_2[,1], betsY_3[,1])) - bet[1])
+
+```
+
+
+```{r}
+
+  bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+b_0_mean <- mean(bets[,1])
+b_1_mean <- mean(bets[,2])
+b_2_mean <- mean(bets[,3])
+b_3_mean <- mean(bets[,4])
+vec_b_1 <- c(r12, sqrt(var(bets[,2])/ nrow(bets)))
+vec_b_1 <- c(r12, sqrt(var(bets[,3])/ nrow(bets)))
+df_c_beta_1 <- df_c_beta_1 %>% insertRow(1, vec_b_1)
+df_c_beta_2 <- df_c_beta_1 %>% insertRow(1, vec_b_2)
+print(b_0_mean - bet[1])
+print(b_1_mean - bet[2])
+print(b_2_mean - bet[3])
+print(b_3_mean - bet[4])
+var_beta_given_x <- inv(t(Xmat)%*%Xmat)*sig2
+print(var(bets) - var_beta_given_x)
+
+```
+
+```{r}
+r12 <- .9
+```
+
+
+```{r}
+sigmat[1,2] <- sigmat[2,1] <- r12*sqrt(sigmat[1,1])*sqrt(sigmat[2,2])
+## Simulation for Categorical Variables with Interaction ##
+set.seed(1005476995)
+X <- mvrnorm(nsample, mu = muvec, Sigma = sigmat); cor(X[,1], X[,2])
+Xmat <- cbind(1, X)
+
+```
+
+
+```{r}
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+model_1 <- lm(Y~X[,1])
+model_2 <- lm(Y~X[,2])
+model_3 <- lm(Y~X[,3])
+
+coef(model_1) - c(bet[1], bet[2])
+coef(model_2) - c(bet[1], bet[3])
+coef(model_3) - c(bet[1], bet[4])
+# 
+betsY_1 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_2 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_3 <- matrix(NA, ncol = 2, nrow = nsim)
+
+for(i in 1:nsim){ # modeling Y on X
+Y_1 <- Xmat[,1]*bet[1] + Xmat[,2]*bet[2] + rnorm(nsample, 0, sqrt(sig2))
+Y_2 <- Xmat[,1]*bet[1] + Xmat[,3]*bet[3] + rnorm(nsample, 0, sqrt(sig2))
+Y_3 <- Xmat[,1]*bet[1] + Xmat[,4]*bet[4] + rnorm(nsample, 0, sqrt(sig2))
+
+modelY_1 <- lm(Y_1 ~ X[,1])
+modelY_2 <- lm(Y_2 ~ X[,2])
+modelY_3 <- lm(Y_3 ~ X[,3])
+
+betsY_1[i,] <- coef(modelY_1)
+betsY_2[i,] <- coef(modelY_2)
+betsY_3[i,] <- coef(modelY_3)
+}
+# print(mean(betsY_1[,2]) - bet[2])
+# print(mean(betsY_2[,2]) - bet[3])
+# print(mean(betsY_3[,2]) - bet[4])
+# 
+# print(mean(c(betsY_1[,1], betsY_2[,1], betsY_3[,1])) - bet[1])
+
+```
+
+
+```{r}
+
+  bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+b_0_mean <- mean(bets[,1])
+b_1_mean <- mean(bets[,2])
+b_2_mean <- mean(bets[,3])
+b_3_mean <- mean(bets[,4])
+vec_b_1 <- c(r12, sqrt(var(bets[,2])/ nrow(bets)))
+vec_b_1 <- c(r12, sqrt(var(bets[,3])/ nrow(bets)))
+df_c_beta_1 <- df_c_beta_1 %>% insertRow(1, vec_b_1)
+df_c_beta_2 <- df_c_beta_1 %>% insertRow(1, vec_b_2)
+print(b_0_mean - bet[1])
+print(b_1_mean - bet[2])
+print(b_2_mean - bet[3])
+print(b_3_mean - bet[4])
+var_beta_given_x <- inv(t(Xmat)%*%Xmat)*sig2
+print(var(bets) - var_beta_given_x)
+
+```
+as the correlation corefficient increases, the estimates of B_1  and B_2 are farther from the true values for simple linear regression. 
+as the correlation corefficient increase the estimates of B_1 and B_2 are also farther from the true values for simple linear regression as seen by inpsection of the samll sample that i have taken. 
+
+```{r}
+df_c_beta_1 %>% ggplot(aes(x = V1, y = V2)) + geom_point()
+```
+```{r}
+df_c_beta_2 %>% ggplot(aes(x = V1, y = V2)) + geom_point()
+```
+
+as can be seen here, the standard erro for both of these increases as the correlation increases. 
+
+##d
+```{r}
+df_d_beta_1_sd <-  matrix(NA, ncol = 2, nrow =0)%>% as.data.frame() %>% head(-1)
+df_d_beta_2_sd <-  matrix(NA, ncol = 2, nrow =0)%>% as.data.frame() %>% head(-1)
+df_part_2_number_d <- data.frame(matrix(NA, ncol = 6, nrow = 0))  
+r13 <-0.5
+
+```
+
+
+```{r}
+sigmat[1,2] <- sigmat[2,1] <- 0
+sigmat[1,3] <- sigmat[3,1] <- r13*sqrt(sigmat[1,1])*sqrt(sigmat[2,2])
+X <- mvrnorm(nsample, mu = muvec, Sigma = sigmat); cor(X[,1], X[,2])
+Xmat <- cbind(1, X)
+
+```
+
+```{r}
+betsY_1 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_2 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_3 <- matrix(NA, ncol = 2, nrow = nsim)
+
+for(i in 1:nsim){ # modeling Y on X
+Y_1 <- Xmat[,1]*bet[1] + Xmat[,2]*bet[2] + rnorm(nsample, 0, sqrt(sig2))
+Y_2 <- Xmat[,1]*bet[1] + Xmat[,3]*bet[3] + rnorm(nsample, 0, sqrt(sig2))
+Y_3 <- Xmat[,1]*bet[1] + Xmat[,4]*bet[4] + rnorm(nsample, 0, sqrt(sig2))
+
+modelY_1 <- lm(Y_1 ~ X[,1])
+modelY_2 <- lm(Y_2 ~ X[,2])
+modelY_3 <- lm(Y_3 ~ X[,3])
+
+betsY_1[i,] <- coef(modelY_1)
+betsY_2[i,] <- coef(modelY_2)
+betsY_3[i,] <- coef(modelY_3)
+}
+# print(mean(betsY_1[,2]) - bet[2])
+# print(mean(betsY_2[,2]) - bet[3])
+# print(mean(betsY_3[,2]) - bet[4])
+# 
+# print(mean(c(betsY_1[,1], betsY_2[,1], betsY_3[,1])) - bet[1])
+
+```
+
+
+```{r}
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+b_0_mean <- mean(bets[,1])
+b_1_mean <- mean(bets[,2])
+b_2_mean <- mean(bets[,3])
+b_3_mean <- mean(bets[,4])
+vec_b_1 <- c(r13, sqrt(var(bets[,2])/ nrow(bets)))
+vec_b_2 <- c(r13, sqrt(var(bets[,3])/ nrow(bets)))
+df_d_beta_1_sd <- df_d_beta_1_sd %>% insertRow(1, vec_b_1)
+df_d_beta_2_sd <- df_d_beta_2_sd %>% insertRow(1, vec_b_2)
+print(b_0_mean - bet[1])
+print(b_1_mean - bet[2])
+print(b_2_mean - bet[3])
+print(b_3_mean - bet[4])
+var_beta_given_x <- inv(t(Xmat)%*%Xmat)*sig2
+print(var(bets) - var_beta_given_x)
+
+```
+```{r}
+vec <- c()
+vec [1] <- r13
+vec [2] <- cor(X[,1], X[,2])
+vec[3] <- mean(betsY_1[,2]) - bet[2]
+vec[4] <- mean(betsY_2[,2]) - bet[3]
+vec[5] <- mean(betsY_3[,2]) - bet[4]
+vec[6] <- mean(c(betsY_1[,1], betsY_2[,1], betsY_3[,1])) - bet[1]
+df_part_2_number_d <- df_part_2_number_d %>% insertRow(1, vec)
+```
+
+```{r}
+r13 <- .7
+```
+
+```{r}
+sigmat[1,2] <- sigmat[2,1] <- 0
+sigmat[1,3] <- sigmat[3,1] <- r13*sqrt(sigmat[1,1])*sqrt(sigmat[2,2])
+X <- mvrnorm(nsample, mu = muvec, Sigma = sigmat); cor(X[,1], X[,2])
+Xmat <- cbind(1, X)
+
+```
+
+```{r}
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+model_1 <- lm(Y~X[,1])
+model_2 <- lm(Y~X[,2])
+model_3 <- lm(Y~X[,3])
+
+coef(model_1) - c(bet[1], bet[2])
+coef(model_2) - c(bet[1], bet[3])
+coef(model_3) - c(bet[1], bet[4])
+betsY_1 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_2 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_3 <- matrix(NA, ncol = 2, nrow = nsim)
+
+for(i in 1:nsim){ # modeling Y on X
+Y_1 <- Xmat[,1]*bet[1] + Xmat[,2]*bet[2] + rnorm(nsample, 0, sqrt(sig2))
+Y_2 <- Xmat[,1]*bet[1] + Xmat[,3]*bet[3] + rnorm(nsample, 0, sqrt(sig2))
+Y_3 <- Xmat[,1]*bet[1] + Xmat[,4]*bet[4] + rnorm(nsample, 0, sqrt(sig2))
+
+modelY_1 <- lm(Y_1 ~ X[,1])
+modelY_2 <- lm(Y_2 ~ X[,2])
+modelY_3 <- lm(Y_3 ~ X[,3])
+
+betsY_1[i,] <- coef(modelY_1)
+betsY_2[i,] <- coef(modelY_2)
+betsY_3[i,] <- coef(modelY_3)
+}
+# print(mean(betsY_1[,2]) - bet[2])
+# print(mean(betsY_2[,2]) - bet[3])
+# print(mean(betsY_3[,2]) - bet[4])
+# 
+# print(mean(c(betsY_1[,1], betsY_2[,1], betsY_3[,1])) - bet[1])
+
+```
+
+
+```{r}
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+b_0_mean <- mean(bets[,1])
+b_1_mean <- mean(bets[,2])
+b_2_mean <- mean(bets[,3])
+b_3_mean <- mean(bets[,4])
+vec_b_1 <- c(r13, sqrt(var(bets[,2])/ nrow(bets)))
+vec_b_2 <- c(r13, sqrt(var(bets[,3])/ nrow(bets)))
+df_d_beta_1_sd <- df_d_beta_1_sd %>% insertRow(1, vec_b_1)
+df_d_beta_2_sd <- df_d_beta_2_sd %>% insertRow(1, vec_b_2)
+print(b_0_mean - bet[1])
+print(b_1_mean - bet[2])
+print(b_2_mean - bet[3])
+print(b_3_mean - bet[4])
+var_beta_given_x <- inv(t(Xmat)%*%Xmat)*sig2
+print(var(bets) - var_beta_given_x)
+
+```
+```{r}
+vec <- c()
+vec [1] <- r13
+vec [2] <- cor(X[,1], X[,2])
+vec[3] <- mean(betsY_1[,2]) - bet[2]
+vec[4] <- mean(betsY_2[,2]) - bet[3]
+vec[5] <- mean(betsY_3[,2]) - bet[4]
+vec[6] <- mean(c(betsY_1[,1], betsY_2[,1], betsY_3[,1])) - bet[1]
+df_part_2_number_d <- df_part_2_number_d %>% insertRow(2, vec)
+```
+
+
+```{r}
+r13 <- .8
+```
+```{r}
+sigmat[1,2] <- sigmat[2,1] <- 0
+sigmat[1,3] <- sigmat[3,1] <- r13*sqrt(sigmat[1,1])*sqrt(sigmat[2,2])
+X <- mvrnorm(nsample, mu = muvec, Sigma = sigmat); cor(X[,1], X[,2])
+Xmat <- cbind(1, X)
+
+```
+
+
+
+```{r}
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+model_1 <- lm(Y~X[,1])
+model_2 <- lm(Y~X[,2])
+model_3 <- lm(Y~X[,3])
+
+coef(model_1) - c(bet[1], bet[2])
+coef(model_2) - c(bet[1], bet[3])
+coef(model_3) - c(bet[1], bet[4])
+betsY_1 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_2 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_3 <- matrix(NA, ncol = 2, nrow = nsim)
+
+for(i in 1:nsim){ # modeling Y on X
+Y_1 <- Xmat[,1]*bet[1] + Xmat[,2]*bet[2] + rnorm(nsample, 0, sqrt(sig2))
+Y_2 <- Xmat[,1]*bet[1] + Xmat[,3]*bet[3] + rnorm(nsample, 0, sqrt(sig2))
+Y_3 <- Xmat[,1]*bet[1] + Xmat[,4]*bet[4] + rnorm(nsample, 0, sqrt(sig2))
+
+modelY_1 <- lm(Y_1 ~ X[,1])
+modelY_2 <- lm(Y_2 ~ X[,2])
+modelY_3 <- lm(Y_3 ~ X[,3])
+
+betsY_1[i,] <- coef(modelY_1)
+betsY_2[i,] <- coef(modelY_2)
+betsY_3[i,] <- coef(modelY_3)
+}
+
+```
+
+
+```{r}
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+b_0_mean <- mean(bets[,1])
+b_1_mean <- mean(bets[,2])
+b_2_mean <- mean(bets[,3])
+b_3_mean <- mean(bets[,4])
+vec_b_1 <- c(r13, sqrt(var(bets[,2])/ nrow(bets)))
+vec_b_2 <- c(r13, sqrt(var(bets[,3])/ nrow(bets)))
+df_d_beta_1_sd <- df_d_beta_1_sd %>% insertRow(1, vec_b_1)
+df_d_beta_2_sd <- df_d_beta_2_sd %>% insertRow(1, vec_b_2)
+print(b_0_mean - bet[1])
+print(b_1_mean - bet[2])
+print(b_2_mean - bet[3])
+print(b_3_mean - bet[4])
+var_beta_given_x <- inv(t(Xmat)%*%Xmat)*sig2
+print(var(bets) - var_beta_given_x)
+
+```
+```{r}
+vec <- c()
+vec [1] <- r13
+vec [2] <- cor(X[,1], X[,2])
+vec[3] <- mean(betsY_1[,2]) - bet[2]
+vec[4] <- mean(betsY_2[,2]) - bet[3]
+vec[5] <- mean(betsY_3[,2]) - bet[4]
+vec[6] <- mean(c(betsY_1[,1], betsY_2[,1], betsY_3[,1])) - bet[1]
+df_part_2_number_d  <- df_part_2_number_d %>% insertRow( 3, vec)
+```
+```{r}
+r13 <- .9
+```
+```{r}
+sigmat[1,2] <- sigmat[2,1] <- 0
+sigmat[1,3] <- sigmat[3,1] <- r13*sqrt(sigmat[1,1])*sqrt(sigmat[2,2])
+X <- mvrnorm(nsample, mu = muvec, Sigma = sigmat); cor(X[,1], X[,2])
+Xmat <- cbind(1, X)
+
+```
+
+```{r}
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+model_1 <- lm(Y~X[,1])
+model_2 <- lm(Y~X[,2])
+model_3 <- lm(Y~X[,3])
+
+coef(model_1) - c(bet[1], bet[2])
+coef(model_2) - c(bet[1], bet[3])
+coef(model_3) - c(bet[1], bet[4])
+betsY_1 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_2 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_3 <- matrix(NA, ncol = 2, nrow = nsim)
+
+for(i in 1:nsim){ # modeling Y on X
+Y_1 <- Xmat[,1]*bet[1] + Xmat[,2]*bet[2] + rnorm(nsample, 0, sqrt(sig2))
+Y_2 <- Xmat[,1]*bet[1] + Xmat[,3]*bet[3] + rnorm(nsample, 0, sqrt(sig2))
+Y_3 <- Xmat[,1]*bet[1] + Xmat[,4]*bet[4] + rnorm(nsample, 0, sqrt(sig2))
+
+modelY_1 <- lm(Y_1 ~ X[,1])
+modelY_2 <- lm(Y_2 ~ X[,2])
+modelY_3 <- lm(Y_3 ~ X[,3])
+
+betsY_1[i,] <- coef(modelY_1)
+betsY_2[i,] <- coef(modelY_2)
+betsY_3[i,] <- coef(modelY_3)
+}
+
+```
+
+
+```{r}
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+b_0_mean <- mean(bets[,1])
+b_1_mean <- mean(bets[,2])
+b_2_mean <- mean(bets[,3])
+b_3_mean <- mean(bets[,4])
+vec_b_1 <- c(r13, sqrt(var(bets[,2])/ nrow(bets)))
+vec_b_2 <- c(r13, sqrt(var(bets[,3])/ nrow(bets)))
+df_d_beta_1_sd <- df_d_beta_1_sd %>% insertRow(1, vec_b_1)
+df_d_beta_2_sd <- df_d_beta_2_sd %>% insertRow(1, vec_b_2)
+print(b_0_mean - bet[1])
+print(b_1_mean - bet[2])
+print(b_2_mean - bet[3])
+print(b_3_mean - bet[4])
+var_beta_given_x <- inv(t(Xmat)%*%Xmat)*sig2
+print(var(bets) - var_beta_given_x)
+
+```
+```{r}
+vec <- c()
+vec [1] <- r13
+vec [2] <- cor(X[,1], X[,2])
+vec[3] <- mean(betsY_1[,2]) - bet[2]
+vec[4] <- mean(betsY_2[,2]) - bet[3]
+vec[5] <- mean(betsY_3[,2]) - bet[4]
+vec[6] <- mean(c(betsY_1[,1], betsY_2[,1], betsY_3[,1])) - bet[1]
+df_part_2_number_d<- df_part_2_number_d %>% insertRow(4, vec)
+```
+
+```{r}
+r13 <- .95
+
+```
+
+
+```{r}
+sigmat[1,2] <- sigmat[2,1] <- 0
+sigmat[1,3] <- sigmat[3,1] <- r13*sqrt(sigmat[1,1])*sqrt(sigmat[2,2])
+X <- mvrnorm(nsample, mu = muvec, Sigma = sigmat); cor(X[,1], X[,2])
+Xmat <- cbind(1, X)
+
+```
+
+```{r}
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+model_1 <- lm(Y~X[,1])
+model_2 <- lm(Y~X[,2])
+model_3 <- lm(Y~X[,3])
+
+coef(model_1) - c(bet[1], bet[2])
+coef(model_2) - c(bet[1], bet[3])
+coef(model_3) - c(bet[1], bet[4])
+betsY_1 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_2 <- matrix(NA, ncol = 2, nrow = nsim)
+betsY_3 <- matrix(NA, ncol = 2, nrow = nsim)
+
+for(i in 1:nsim){ # modeling Y on X
+Y_1 <- Xmat[,1]*bet[1] + Xmat[,2]*bet[2] + rnorm(nsample, 0, sqrt(sig2))
+Y_2 <- Xmat[,1]*bet[1] + Xmat[,3]*bet[3] + rnorm(nsample, 0, sqrt(sig2))
+Y_3 <- Xmat[,1]*bet[1] + Xmat[,4]*bet[4] + rnorm(nsample, 0, sqrt(sig2))
+
+modelY_1 <- lm(Y_1 ~ X[,1])
+modelY_2 <- lm(Y_2 ~ X[,2])
+modelY_3 <- lm(Y_3 ~ X[,3])
+
+betsY_1[i,] <- coef(modelY_1)
+betsY_2[i,] <- coef(modelY_2)
+betsY_3[i,] <- coef(modelY_3)
+}
+
+```
+
+
+```{r}
+bets <- matrix(NA, ncol = length(bet), nrow = nsim)
+for(i in 1:nsim){ # modeling Y on X
+Y <- Xmat%*%bet + rnorm(nsample, 0, sqrt(sig2))
+model1 <- lm(Y ~ X)
+bets[i,] <- coef(model1)
+}
+
+b_0_mean <- mean(bets[,1])
+b_1_mean <- mean(bets[,2])
+b_2_mean <- mean(bets[,3])
+b_3_mean <- mean(bets[,4])
+vec_b_1 <- c(r13, sqrt(var(bets[,2])/ nrow(bets)))
+vec_b_2 <- c(r13, sqrt(var(bets[,3])/ nrow(bets)))
+df_d_beta_1_sd <- df_d_beta_1_sd %>% insertRow(1, vec_b_1)
+df_d_beta_2_sd <- df_d_beta_2_sd %>% insertRow(1, vec_b_2)
+print(b_0_mean - bet[1])
+print(b_1_mean - bet[2])
+print(b_2_mean - bet[3])
+print(b_3_mean - bet[4])
+var_beta_given_x <- inv(t(Xmat)%*%Xmat)*sig2
+print(var(bets) - var_beta_given_x)
+
+```
+```{r}
+vec <- c()
+vec [1] <- r13
+vec [2] <- cor(X[,1], X[,2])
+vec[3] <- mean(betsY_1[,2]) - bet[2]
+vec[4] <- mean(betsY_2[,2]) - bet[3]
+vec[5] <- mean(betsY_3[,2]) - bet[4]
+vec[6] <- mean(c(betsY_1[,1], betsY_2[,1], betsY_3[,1])) - bet[1]
+df_part_2_number_d <- df_part_2_number_d %>% insertRow(5, vec)
+
+```
+```{r}
+df_part_2_number_d <- df_part_2_number_d %>% filter(!is.na(X1)) %>% as.data.frame()
+```
+ From the diagrams one can see that in general as the correlation correficient increases, the differences between beta_0 and the esitmate increases while fro b_1 and b_2 it steades out and becomes close to the value, while for b_3 it behaves similarly to b_0 and increases similar to b)1
+
+```{r}
+df_part_2_number_d %>% ggplot(aes(x = X1, y = X2)) + geom_point() 
+```
+
+
+
+```{r}
+df_part_2_number_d %>% ggplot(aes(x = X1, y = X3)) + geom_point()
+```
+
+```{r}
+df_part_2_number_d %>% ggplot(aes(x = X1, y = X4)) + geom_point()
+```
+
+```{r}
+df_part_2_number_d %>% ggplot(aes(x = X1, y = X5)) + geom_point()
+```
+
+```{r}
+df_d_beta_1_sd %>% ggplot(aes(x = V1, y = V2)) + geom_point()
+```
+```{r}
+df_d_beta_2_sd %>% ggplot(aes(x = V1, y = V2)) + geom_point()
+```
+
+This seems a little different, here the standard error of b_1 seems to increase, while the standard error of b_2 does not really change much and stays rather constant regardless of the correlation coeffcienitns. 
