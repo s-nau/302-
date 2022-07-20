@@ -1,0 +1,472 @@
+---
+title: "sta302 final project"
+author: "shimmy"
+date: "6/2/2021"
+output: PDF, Power_Point
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+
+```
+
+
+
+# setting up the data and the proper libraries
+```{r}
+#libraries and given code
+rm(list = ls())
+setwd("C:/Users/shimm/OneDrive - University of Toronto/second_year/summer first semester/sta302/final project")
+library(tidyverse)
+library(NHANES)
+library(car)
+library(olsrr)
+library(graphics)
+library(psych)
+library(glmnet)
+library(rms)
+library("ggplotify")
+
+small.nhanes <- na.omit(NHANES[NHANES$SurveyYr=="2011_12"
+& NHANES$Age > 17,c(1,3,4,8:11,13,17,20,21,25,46,50,51,52,61)])
+small.nhanes <- as.data.frame(small.nhanes %>%
+group_by(ID) %>% filter(row_number()==1) )
+nrow(small.nhanes)
+## Checking whether there are any ID that was repeated. If not ##
+## then length(unique(small.nhanes$ID)) and nrow(small.nhanes) are same ##
+length(unique(small.nhanes$ID))
+1
+```
+
+```{r}
+set.seed(1005476995)
+train <- small.nhanes[sample(seq_len(nrow(small.nhanes)), size = 500),]
+nrow(train)
+length(which(small.nhanes$ID %in% train$ID))
+test <- small.nhanes[!small.nhanes$ID %in% train$ID,]
+nrow(test)
+train_minus_id <- train[,2:17]
+test_minus_id <- test[,2:17]
+
+
+
+```
+
+
+
+
+# creating valuable functions
+
+```{r}
+f_multi_minus_vif <- function(m){
+    h <- hatvalues(m)
+   thresh_hold <- 2*(dim(model.matrix(m))[2])/nrow(m$model)
+   w <- which(h > thresh_hold)
+   print("leverage")
+   print(w)
+
+d <- cooks.distance(m)
+cut <- which(d > qf(.5,
+                    df1 =  ncol(m$model[, -c(1)]) + 1,
+                    df2 = nrow(m$model[, -c(1)])-ncol(m$model[, -c(1)]) - 1)
+                    )
+             
+print("cut_d")
+print(cut)
+
+dfits<- dffits(m)
+cut_fits <- which(
+  abs(dfits) > 2*sqrt((ncol(m$model[, -c(1)]) + 1)/nrow(m$model[, -c(1)]))
+  )
+print("cut_fits")
+print(cut_fits)
+
+
+df_b <- dfbetas(m)
+cut_b <- which(
+  abs(df_b[,1]) > 2/sqrt(nrow(m$model[, -c(1)]))
+  
+  )
+print("cut_beta")
+print(cut_b)
+print("lev + cut_b")
+lev_cut_b <- intersect(w, cut_b)
+print(lev_cut_b)
+print("lev + cut_fits")
+ lev_cut_fits<- intersect(w, cut_fits)
+print(lev_cut_fits)
+print(" lev + cut_d")
+w_cut <- intersect(w, cut)
+print(w_cut )
+print("b + fits")
+b_cut_fits <- intersect(cut_b, cut_fits)
+print(b_cut_fits)
+print("d + b")
+d_b <-intersect(cut_b, cut) 
+print(d_b)
+print("d + fits")
+d_fits <- intersect(cut, cut_fits)
+print(d_fits)
+print(" all outliers intersect")
+all_intersection <- intersect(intersect(cut, cut_fits), cut_b)
+print(all_intersection )
+ls <- list(lev_cut_b, lev_cut_fits, w_cut, b_cut_fits, d_b, d_fits, all_intersection)
+print(psych::pairs.panels(m$model[, -c(1)], density = TRUE))
+print(plot(m))
+
+print(anova(m))
+return(ls)
+  
+}
+
+f_multi_diagnostic<- function(m){
+
+ls <- f_multi_minus_vif(m)  
+v <- car::vif(m)
+print("VIF")
+print(v)
+
+return(ls)
+}
+```
+# setting up the model with all variables and getting the error
+
+```{r}
+model.all <- lm(BPSysAve ~., data = train_minus_id)
+model.all.error <- mean((model.all$model$BPSysAve - model.all$fitted.values)^2)
+model.all.error
+```
+
+
+
+
+
+
+
+
+
+
+# variable selection
+## lasso method
+### variable selection
+```{r}
+set.seed(1005476995)
+cv.out <- cv.glmnet(x = data.matrix(train_minus_id[, -which(names( train_minus_id) == "BPSysAve")]), y = train_minus_id$BPSysAve, standardize = T, alpha = 1)
+#plot(cv.out)
+best.lambda <- cv.out$lambda.1se
+#best.lambda
+co<-coef(cv.out, s = "lambda.1se") 
+#co
+
+
+
+
+thresh <- 0.00
+# select variables #
+inds<-which(abs(co) > thresh )
+variables<-row.names(co)[inds]
+sel.var.lasso<-variables[!(variables %in% '(Intercept)')]
+sel.var.lasso
+```
+```{r}
+
+
+#model.matrix
+#wanna see how the preidction performance is in the trainng set
+#choose use 10 for B, and find which is the best model. Lasso, Aic, BIC. There is no one answer. 
+#important to do cross validation. 
+# should only be used for accuract of final model 
+```
+
+
+```{r}
+model.lasso <- lm(BPSysAve ~., data = train_minus_id %>% select(Age, BPSysAve))
+plot(model.lasso)
+
+summary(model.lasso)
+```
+
+### outliers
+```{r}
+hii <- hatvalues(model.lasso)
+leverage_point <- which(hii > 4/nrow(model.lasso$model))
+cooks <- cooks.distance(model.lasso)
+outliers <- which(cooks > 4/(nrow(model.lasso$model)-2))
+lasso.outliers <- intersect(outliers, leverage_point)
+ggplot(model.lasso$model[-lasso.outliers,],aes(y = BPSysAve, x = Age)) +
+  geom_point() + 
+  geom_smooth(method='lm', formula= y~x)
+model.lasso.outliers <- lm(BPSysAve ~., data = train_minus_id[-lasso.outliers,] %>% select(Age, BPSysAve))
+plot(model.lasso.outliers)
+```
+
+### boxcox transformation
+```{r}
+boxCox(model.lasso.outliers) # -.5
+boxCox(lm(Age ~ 1, data = train_minus_id[-lasso.outliers,] %>% select(Age, BPSysAve))) # approx 1
+```
+
+### final model and calculations
+```{r}
+model.lasso.boxcox <- lm((BPSysAve^(-.5) - 1)/(-.5) ~., data = train_minus_id[-lasso.outliers,] %>% select(Age, BPSysAve))
+
+plot(model.lasso.boxcox)
+error.lasso <- mean((model.lasso.boxcox$model$`(BPSysAve^(-0.5) - 1)/(-0.5)` - model.lasso.boxcox$fitted.values)^2)
+error.lasso
+```
+
+### cross validation and test error
+```{r}
+
+### Cross Validation and prediction performance of lasso based selection ###
+ols.lasso <- ols(`(BPSysAve^(-0.5) - 1)/(-0.5)` ~ ., data = model.lasso.boxcox$model, 
+                 x=T, y=T, model = T)
+
+## 10 fold cross validation ##    
+lasso.cross <- calibrate(ols.lasso, method = "crossvalidation", B = 10)
+## Calibration plot ##
+#pdf("lasso_cross.pdf", height = 8, width = 16)
+plot(lasso.cross, las = 1, xlab = "Predicted BPSysAve", main = "Cross-Validation calibration with LASSO")
+#dev.off()
+test_minus_id.lasso.tranformation <- test_minus_id[-lasso.outliers,]
+test_minus_id.lasso.tranformation$`(BPSysAve^(-0.5) - 1)/(-0.5)` <- (test_minus_id.lasso.tranformation$BPSysAve^.5 - 1)/ .5
+
+
+
+
+## Test Error ##
+pred.lasso <- predict(ols.lasso, newdata = test_minus_id.lasso.tranformation)
+## Prediction error ##
+pred.error.lasso <- mean((test_minus_id.lasso.tranformation$`(BPSysAve^(-0.5) - 1)/(-0.5)` - pred.lasso)^2)
+
+pred.error.lasso
+```
+## aic model
+### variable selection
+```{r}
+model.lm <- lm (BPSysAve~ ., data =  train_minus_id)
+summary(model.lm)  
+n <- nrow(train_minus_id)
+sel.var.aic <- step(model.lm, trace = 0, k = 2, direction = "both") 
+sel.var.aic<-attr(terms(sel.var.aic), "term.labels")   
+sel.var.aic
+```
+
+
+```{r}
+model.aic <-  lm(BPSysAve ~., data = train_minus_id[,c(sel.var.aic, "BPSysAve")])
+```
+### diagnostics
+
+```{r}
+
+r.aic <- f_multi_diagnostic(model.aic)
+```
+```{r}
+model.aic.vif.outliers.df <- model.aic$model[-union(union(r.aic[[1]], r.aic[[2]]), r.aic[[4]]), -which(names( model.aic$model) == "HHIncome")]
+model.aic.vif.outliers <- lm(BPSysAve ~., data = model.aic.vif.outliers.df)
+mult <- lm(cbind(BPSysAve, Age, Poverty)~1, data = model.aic.vif.outliers.df
+           %>% filter(Poverty > 0)) # this allows us to ensure that we can do the boxcox tranformation function, only a few observations, so unlikely to lead to a large problem
+summary(powerTransform(mult))
+```
+### boxcox
+```{r}
+
+model.aic.vif.outliers.boxcox <- lm(log(BPSysAve) ~  
+                                    Gender +
+                                    Race3 +
+                                    MaritalStatus +
+                                    Age + 
+                                    I((Poverty^.5 - 1)/.5) +
+                                    SleepTrouble 
+                                  ,data = model.aic.vif.outliers.df)
+
+#model.aic.vif.outliers.boxcox$model$`I(geometric.mean(Poverty)^(1 - 0.5) * (Poverty^0.5 - 1)/0.5)`
+f_multi_minus_vif(model.aic.vif.outliers.boxcox)
+model.aic.vif.outliers.boxcox$coefficients %>% as.data.frame() %>% write.csv("model.aic.vif.outliers.boxcox$coefficients.csv")
+model.aic.vif.outliers
+error.aic <- mean((model.aic.vif.outliers.boxcox$fitted.values - model.aic.vif.outliers.boxcox$model$`log(BPSysAve)`)^2)
+error.aic
+```
+### cross validation and testing
+```{r}
+ols.aic <- ols(`log(BPSysAve)` ~ ., data = model.aic.vif.outliers.boxcox$model, 
+               x=T, y=T, model = T)
+
+## 10 fold cross validation ##    
+aic.cross <- calibrate(ols.aic, method = "crossvalidation", B = 10)
+## Calibration plot ##
+plot(aic.cross, las = 1, xlab = "Predicted BPSysAve", main = "Cross-Validation calibration with AIC")
+g <- test_minus_id$BPSysAve
+gsub(",", "", g)
+g2 <-gsub(",", "", g)
+
+
+test_minus_id.aic.transformation <- test_minus_id[-union(union(r.aic[[1]], r.aic[[2]]), r.aic[[4]]),]
+g <- test_minus_id.aic.transformation$BPSysAve
+gsub(",", "", g)
+g2 <-gsub(",", "", g)
+test_minus_id.aic.transformation$`log(BPSysAve)` <- log(as.numeric(g2))
+
+test_minus_id.aic.transformation$`I((Poverty^0.5 - 1)/0.5)` <- I((test_minus_id.aic.transformation$Poverty^.5 - 1)/.5)
+## Test Error ##
+pred.aic <- predict(ols.aic, newdata = test_minus_id.aic.transformation[,c( "Gender",        "Age"  ,         "Race3"   ,      "MaritalStatus",     
+"I((Poverty^0.5 - 1)/0.5)", "SleepTrouble", "log(BPSysAve)")])
+## Prediction error ##
+pred.error.AIC <- mean((test_minus_id.aic.transformation$`log(BPSysAve)` - pred.aic)^2)
+pred.error.AIC
+summary(model.aic.vif.outliers.boxcox)$adj.r.squared
+summary(model.aic.vif.outliers.boxcox)$r.squared
+```
+
+## BIC
+```{r}
+ 
+n <- nrow(train)
+sel.var.bic <- step(model.lm, trace = 0, k = log(n), direction = "both") 
+sel.var.bic<-attr(terms(sel.var.bic), "term.labels")   
+sel.var.bic
+model.bic<-  lm(BPSysAve ~., data = train_minus_id[,c(sel.var.bic, "BPSysAve")])
+
+
+```
+###diagnostics
+```{r}
+r.bic <- f_multi_diagnostic(model.bic)
+```
+
+### outliers
+```{r}
+model.bic.vif.outliers.df <- model.bic$model[-union(r.bic[[1]], r.bic[[4]]),]
+model.bic.vif.outliers <- lm(BPSysAve ~., data = model.bic.vif.outliers.df)
+```
+
+#boxcox
+```{r}
+mult <- lm(cbind(BPSysAve, Age, Poverty)~1, data = model.bic.vif.outliers.df %>% filter(Poverty > 0))
+summary(powerTransform(mult))
+
+
+```
+
+```{r}
+model.bic.vif.outliers.boxcox <- lm(log(BPSysAve) ~  
+                                    #Gender +
+                                    #Race3 +
+                                    #MaritalStatus +
+                                    Age + 
+                                    I((Poverty^.5 - 1)/.5)
+                                    #SleepTrouble
+                                  ,data = model.bic.vif.outliers.df)
+
+f_multi_diagnostic(model.bic.vif.outliers.boxcox)
+
+error.bic <- mean((model.bic.vif.outliers.boxcox$fitted.values - model.bic.vif.outliers.boxcox$model$`log(BPSysAve)`)^2)
+error.bic
+
+```
+### testing and cross validation
+```{r}
+ols.bic <- ols(`log(BPSysAve)`  ~ ., data = model.bic.vif.outliers.boxcox$model, 
+               x=T, y=T, model = T)
+
+## 10 fold cross validation ##    
+bic.cross <- calibrate(ols.bic, method = "crossvalidation", B = 10)
+#bic.boot <- calibrate(ols.bic, method = "boot", B = 10)
+## Calibration plot ##
+#pdf("bic_cross.pdf", height = 8, width = 16)
+plot(bic.cross, las = 1, xlab = "Predicted BPSysAve", main = "Cross-Validation calibration with BIC")
+#plot(bic.boot,las = 1, xlab = "Predicted LPSA", main = "Bootstrapping calibration with BIC")
+#dev.off()
+test_minus_id.bic.transformation <-  test_minus_id[-union(r.bic[[1]],r.bic[[4]]),]
+
+g <- test_minus_id.bic.transformation$BPSysAve
+#gsub(",", "", g)
+g2 <-gsub(",", "", g)
+test_minus_id.bic.transformation$`log(BPSysAve)` <- log(as.numeric(g2))
+test_minus_id.bic.transformation$`I((Poverty^0.5 - 1)/0.5)` <- I((test_minus_id.bic.transformation$Poverty^0.5 - 1)/0.5)
+## Test Error ##
+pred.bic <- predict(ols.bic, newdata = test_minus_id.bic.transformation[,c("Age","I((Poverty^0.5 - 1)/0.5)", "log(BPSysAve)")])
+## Prediction error ##
+pred.error.BIC <- mean((test_minus_id.bic.transformation$`log(BPSysAve)` - pred.bic)^2)
+pred.error.BIC
+
+```
+# model choice
+```{r}
+print(c(pred.error.AIC, pred.error.BIC, pred.error.lasso, min(c(pred.error.AIC, pred.error.BIC, pred.error.lasso))))
+```
+# adding in smokenow to BIc mdel
+```{r}
+SmokeNow <- train_minus_id[-union(union(r.aic[[1]], r.aic[[2]]), r.aic[[4]]),]$SmokeNow
+model.aic.vif.outliers.boxcox.smokeNow <- lm(`log(BPSysAve)` ~., data = cbind(model.aic.vif.outliers.boxcox$model,SmokeNow))
+```
+
+## diagnostic of BIC with smoek now
+```{r}
+model.aic.vif.outliers.boxcox.smokeNow %>% f_multi_diagnostic()
+```
+
+
+```{r}
+summary(model.aic.vif.outliers.boxcox.smokeNow)
+```
+
+
+```{r}
+anova(model.aic.vif.outliers.boxcox.smokeNow) %>% as.data.frame() %>% write.csv("model.aic.vif.outliers.boxcox.smokeNow.csv")
+
+
+```
+## calibration and training
+```{r}
+ols.aic.smokenow <- ols(`log(BPSysAve)`  ~ ., data = as.data.frame(data.matrix(model.aic.vif.outliers.boxcox.smokeNow$model)), 
+               x=T, y=T, model = T)
+
+## 10 fold cross validation ##    
+aic.cross.smoke.now <- calibrate(ols.aic.smokenow, method = "crossvalidation", B = 10)
+#bic.boot <- calibrate(ols.bic, method = "boot", B = 10)
+## Calibration plot ##
+#pdf("bic_cross.pdf", height = 8, width = 16)
+plot(aic.cross.smoke.now, las = 1, xlab = "Predicted BPSysAve", main = "Cross-Validation calibration for smokenow with AIC")
+#plot(bic.boot,las = 1, xlab = "Predicted LPSA", main = "Bootstrapping calibration with BIC")
+#dev.off()
+test_minus_id.aic.transformation.smokenow <-  test_minus_id[-union(union(r.aic[[1]], r.aic[[2]]), r.aic[[4]]),]
+
+g <- test_minus_id.aic.transformation.smokenow$BPSysAve
+#gsub(",", "", g)
+g2 <-gsub(",", "", g)
+test_minus_id.aic.transformation.smokenow$`log(BPSysAve)` <- log(as.numeric(g2))
+test_minus_id.aic.transformation.smokenow$`I((Poverty^0.5 - 1)/0.5)` <- I((test_minus_id.aic.transformation.smokenow$Poverty^0.5 - 1)/0.5)
+
+`train_minus_id[-union(union(r.aic[[1]], r.aic[[2]]), r.aic[[4]]), ` <-as.vector(train_minus_id[-union(union(r.aic[[1]], r.aic[[2]]), r.aic[[4]]),] )
+
+## Test Error ##
+#train_minus_id <- train_minus_id %>% mutate('train_minus_id[-union(r.bic[[1]], r.bic[[4]]), ]$SmokeNow' = SmokeNow)
+new_df <-  test_minus_id.aic.transformation.smokenow[,which(names(test_minus_id.aic.transformation.smokenow) %in% c(colnames(model.aic.vif.outliers.boxcox.smokeNow$model)))]
+cols <- model.aic.vif.outliers.boxcox.smokeNow$model %>% colnames()
+new_df_2 <-  test_minus_id.aic.transformation[,cols]
+pred.aic.smokenow <- predict(model.aic.vif.outliers.boxcox.smokeNow, new_df_2)
+## Prediction error ##
+
+```
+```{r}
+t.test(`log(BPSysAve)` ~ as.factor(SmokeNow), data = model.aic.vif.outliers.boxcox.smokeNow$model, var.equal = T
+       )
+```
+
+
+## prediction error
+```{r}
+pred.error.aic.smokenow <- mean((test_minus_id.aic.transformation.smokenow$`log(BPSysAve)` - pred.aic.smokenow)^2)
+pred.error.aic.smokenow
+
+
+```
+
+
